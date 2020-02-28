@@ -1,3 +1,4 @@
 <div>
-  This plugin triggers a build with a DOS script, it allows for the use of build parameters and build_number as environment variables.
+  This plugin triggers a build when the scripts return success
 </div>
+
