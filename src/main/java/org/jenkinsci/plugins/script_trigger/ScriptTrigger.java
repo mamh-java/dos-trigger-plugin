@@ -12,7 +12,6 @@ import hudson.model.ParametersDefinitionProperty;
 import hudson.model.PasswordParameterValue;
 import hudson.model.Project;
 import hudson.model.StringParameterValue;
-import hudson.model.TaskListener;
 import hudson.model.TopLevelItem;
 import hudson.triggers.Trigger;
 import hudson.triggers.TriggerDescriptor;
@@ -21,6 +20,7 @@ import jenkins.model.Jenkins;
 import org.kohsuke.stapler.DataBoundConstructor;
 
 import javax.annotation.Nonnull;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
@@ -31,6 +31,9 @@ public class ScriptTrigger extends Trigger<Project> {
     private transient static final Logger LOGGER = Logger.getLogger(ScriptTrigger.class.getName());
 
     private final String script;
+    private static final String MARKER    = "#:#:#";
+    private static final String CAUSE_VAR = "CAUSE";
+    private static final String CRLF      = "\r\n";
 
     @DataBoundConstructor
     public ScriptTrigger(String schedule, String script) throws ANTLRException {
@@ -52,9 +55,9 @@ public class ScriptTrigger extends Trigger<Project> {
     public void run() {
         if (!Jenkins.get().isQuietingDown() && this.job.isBuildable()) {
             try {
-                int ret = runScript(); //执行windows 上的 bat 脚本
-                if (ret == 0) {
-                    job.scheduleBuild(0, new ScriptTriggerCause(ret, "Script Trigger by  " + script));
+                String ret = runScript(); //执行windows 上的 bat 脚本
+                if (ret != null) {
+                    job.scheduleBuild(0, new ScriptTriggerCause(ret, "0"));
                 }
             } catch (Exception e) {
                 LOGGER.log(Level.WARNING, "Problem while executing ScriptTrigger.run()", e);
@@ -62,22 +65,38 @@ public class ScriptTrigger extends Trigger<Project> {
         }
     }
 
-    private int runScript() throws InterruptedException {
-        final TaskListener listener = new LogTaskListener(LOGGER, Level.INFO);
+    private String runScript() throws InterruptedException {
+        final LogTaskListener listener = new LogTaskListener(LOGGER, Level.INFO);
         try {
             final FilePath ws = Jenkins.get().getWorkspaceFor((TopLevelItem) job);
             final FilePath batchFile = createScriptFile(ws); //ws.createTextTempFile("jenkins", ".bat", makeScript(), true);
 
             try {
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
                 final Launcher launcher = Jenkins.get().createLauncher(listener);
                 final EnvVars envVars = buildEnvironmentForScriptToRun();
-                String[] cmd = buildCommandLine(batchFile);
-                Launcher.ProcStarter procStarter = launcher.launch().cmds(cmd).envs(envVars).stdout(listener).pwd(ws);
-                int ret = procStarter.join();
-                return ret;
+                final String[] cmd = buildCommandLine(batchFile);
+
+                Launcher.ProcStarter procStarter = launcher
+                        .launch()
+                        .cmds(cmd)
+                        .envs(envVars)
+                        .stdout(baos)
+                        .pwd(ws);
+                int exitCode = procStarter.join();
+                if (exitCode == 0) { //Executes a command and reads the result to a string
+                    String output = baos.toString()
+                            .replaceAll("[\t\r\n]+", " ")
+                            .trim();
+                    LOGGER.log(Level.WARNING, "command execution output: " + output);
+
+                    return output;
+                } else {
+                    return null;
+                }
             } catch (IOException e) {
                 LOGGER.log(Level.WARNING, "command execution failed", e);
-                return -1;
+                return null;
             } finally {
                 try {
                     batchFile.delete();
@@ -87,7 +106,7 @@ public class ScriptTrigger extends Trigger<Project> {
             }
         } catch (IOException e) {
             LOGGER.log(Level.WARNING, "Unable to produce a script file", e);
-            return -1;
+            return null;
         }
     }
 
@@ -116,20 +135,32 @@ public class ScriptTrigger extends Trigger<Project> {
     private String[] buildCommandLine(FilePath batchFile) {
         String[] cmd;
         if (isUnix()) {
-            cmd = new String[]{"bash", "-x", batchFile.getRemote()};
+            cmd = new String[]{"bash", "-c", batchFile.getRemote()};
         } else {
             cmd = new String[]{"cmd", "/c", "call", batchFile.getRemote()};
         }
         return cmd;
     }
 
-
     private FilePath createScriptFile(@Nonnull FilePath dir) throws IOException, InterruptedException {
         return dir.createTextTempFile("jenkins", getFileExtension(), getContents(), true);
     }
 
     private String getContents() {
-        return this.script;
+       String contents = ""
+                        + "@set "+ CAUSE_VAR +"=" +CRLF
+                        + "@echo off" + CRLF
+                        + "call :TheActualScript" + CRLF
+                        + "@echo off" + CRLF
+                        + "echo " + MARKER + CAUSE_VAR + MARKER + "%" + CAUSE_VAR + "%" + MARKER + CRLF
+                        + "goto :EOF" + CRLF
+                        + ":TheActualScript" + CRLF
+                        + script + CRLF;
+        if (isUnix()) {
+            return this.script;
+        }else {
+            return contents;
+        }
     }
 
     private boolean isUnix() {

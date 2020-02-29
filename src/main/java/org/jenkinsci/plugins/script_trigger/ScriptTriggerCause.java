@@ -3,19 +3,27 @@ package org.jenkinsci.plugins.script_trigger;
 import hudson.model.Cause;
 
 public class ScriptTriggerCause extends Cause {
-    private final int status;
-    private final String description;
+    private final String output;
+    private final String status;
 
-    public ScriptTriggerCause(int status, String description) {
+
+    public ScriptTriggerCause(String output, String status) {
+        this.output = output;
         this.status = status;
-        this.description = description;
     }
 
-    public int getStatus() {
+    public String getStatus() {
         return status;
     }
 
+    public String getOutput() {
+        return output;
+    }
+
+
+
     public String getShortDescription() {
+        String description = Messages.Cause_ScriptTriggerCause_ShortDescription(status); // cause 描述,由什么事件触发
         return description;
     }
 }
