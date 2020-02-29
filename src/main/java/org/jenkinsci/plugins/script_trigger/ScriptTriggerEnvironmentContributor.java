@@ -24,7 +24,8 @@ public class ScriptTriggerEnvironmentContributor extends EnvironmentContributor 
     private void buildEnvironmentFor(Run<?, ?> run, EnvVars envVars) {
         ScriptTriggerCause cause = run.getCause(ScriptTriggerCause.class);
         if (cause != null) {
-            envVars.put(name("SCRIPTRETURN"), "" + cause.getStatus());
+            envVars.put(name("status"), "" + cause.getStatus());
+            envVars.put(name("output"), "" + cause.getOutput());
         }
     }
 
