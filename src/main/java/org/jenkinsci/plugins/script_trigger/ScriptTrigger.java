@@ -135,7 +135,7 @@ public class ScriptTrigger extends Trigger<Project> {
     private String[] buildCommandLine(FilePath batchFile) {
         String[] cmd;
         if (isUnix()) {
-            cmd = new String[]{"bash", "-c", batchFile.getRemote()};
+            cmd = new String[]{"bash", batchFile.getRemote()};
         } else {
             cmd = new String[]{"cmd", "/c", "call", batchFile.getRemote()};
         }
