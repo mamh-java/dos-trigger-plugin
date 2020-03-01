@@ -143,7 +143,7 @@ public class ScriptTrigger extends Trigger<Project> {
     }
 
     private FilePath createScriptFile(@Nonnull FilePath dir) throws IOException, InterruptedException {
-        return dir.createTextTempFile("jenkins", getFileExtension(), getContents(), true);
+        return dir.createTextTempFile("jenkins", getFileExtension(), getContents(), false);
     }
 
     private String getContents() {
